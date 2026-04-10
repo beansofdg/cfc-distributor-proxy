@@ -1,19 +1,11 @@
-/*******************************************************
- * 🔥 CFC Distributor Proxy Server
- * Integrates Chattanooga Shooting Supplies with Lovable
- *******************************************************/
-
 import express from "express";
 import cors from "cors";
-import axios from "axios";
 import dotenv from "dotenv";
+import axios from "axios";
 import crypto from "crypto";
 
 dotenv.config();
 
-/* ===============================
-   🚀 App Configuration
-================================= */
 console.log("🔥 NEW SERVER VERSION LOADED");
 
 const app = express();
@@ -22,7 +14,6 @@ app.use(express.json());
 
 const PORT = process.env.PORT || 10000;
 
-// Support both Lovable and local variable naming
 const PROXY_SECRET =
   process.env.PROXY_SECRET ||
   process.env.PROXY_AUTH_SECRET ||
@@ -31,16 +22,13 @@ const PROXY_SECRET =
 const CHATTANOOGA_SID = process.env.CHATTANOOGA_SID;
 const CHATTANOOGA_TOKEN = process.env.CHATTANOOGA_TOKEN;
 
-// Chattanooga API base URL
-const CHATTANOOGA_BASE_URL =
-  "https://api.chattanoogashooting.com/rest/v5";
+const CHATTANOOGA_BASE_URL = "https://api.chattanoogashooting.com/rest/v5";
 
-/* ===============================
-   🔐 Utility Functions
-================================= */
-
-// Generate MD5 hash of the token (required by Chattanooga API)
 function generateAuthHeader() {
+  if (!CHATTANOOGA_SID || !CHATTANOOGA_TOKEN) {
+    throw new Error("Missing Chattanooga credentials");
+  }
+
   const md5Hash = crypto
     .createHash("md5")
     .update(CHATTANOOGA_TOKEN)
@@ -52,7 +40,6 @@ function generateAuthHeader() {
   return `Basic ${encodedCredentials}`;
 }
 
-// Middleware to verify proxy secret
 function authenticateProxy(req, res, next) {
   const providedSecret =
     req.headers["x-proxy-secret"] ||
@@ -68,15 +55,10 @@ function authenticateProxy(req, res, next) {
   next();
 }
 
-/* ===============================
-   🌐 Root & Health Routes
-================================= */
-
-// Root route (Prevents "Cannot GET /")
 app.get("/", (req, res) => {
   res.json({
     ok: true,
-    service: "🔥 CFC Distributor Proxy",
+    service: "CFC Distributor Proxy",
     status: "running",
     endpoints: {
       health: "/health",
@@ -88,7 +70,6 @@ app.get("/", (req, res) => {
   });
 });
 
-// Health check route
 app.get("/health", (req, res) => {
   res.json({
     ok: true,
@@ -97,11 +78,6 @@ app.get("/health", (req, res) => {
   });
 });
 
-/* ===============================
-   🧪 Debug & Test Routes
-================================= */
-
-// General proxy test
 app.get("/api/test", authenticateProxy, (req, res) => {
   res.json({
     ok: true,
@@ -109,118 +85,95 @@ app.get("/api/test", authenticateProxy, (req, res) => {
   });
 });
 
-// Chattanooga credentials test
-app.get(
-  "/api/chattanooga/test",
-  authenticateProxy,
-  (req, res) => {
+app.get("/api/chattanooga/test", authenticateProxy, (req, res) => {
+  try {
+    const authHeader = generateAuthHeader();
+
     res.json({
       ok: true,
       distributor: "chattanooga",
       message: "Credentials loaded",
+      authPreview: `${authHeader.substring(0, 18)}...`,
       credentialsPresent: {
-        sid: !!CHATTANOOGA_SID,
-        token: !!CHATTANOOGA_TOKEN,
+        sid: Boolean(CHATTANOOGA_SID),
+        token: Boolean(CHATTANOOGA_TOKEN),
       },
     });
+  } catch (error) {
+    res.status(500).json({
+      ok: false,
+      error: error.message,
+    });
   }
-);
+});
 
-/* ===============================
-   📦 Chattanooga Items Route
-================================= */
+app.get("/api/chattanooga/items", authenticateProxy, async (req, res) => {
+  try {
+    const authHeader = generateAuthHeader();
 
-app.get(
-  "/api/chattanooga/items",
-  authenticateProxy,
-  async (req, res) => {
-    try {
-      if (!CHATTANOOGA_SID || !CHATTANOOGA_TOKEN) {
-        return res.status(500).json({
-          ok: false,
-          error: "Missing Chattanooga credentials",
-        });
-      }
+    const response = await axios.get(`${CHATTANOOGA_BASE_URL}/items`, {
+      headers: {
+        Authorization: authHeader,
+        Accept: "application/json",
+      },
+      params: {
+        page: req.query.page || 1,
+        per_page: req.query.per_page || 10,
+      },
+    });
 
-      const authHeader = generateAuthHeader();
+    res.json({
+      ok: true,
+      message: "🔥 REAL ITEMS LOADED",
+      data: response.data,
+    });
+  } catch (error) {
+    console.error(
+      "🔥 Chattanooga API error:",
+      error.response?.data || error.message
+    );
 
-      const response = await axios.get(
-        `${CHATTANOOGA_BASE_URL}/items`,
-        {
-          headers: {
-            Authorization: authHeader,
-            Accept: "application/json",
-          },
-          params: {
-            page: req.query.page || 1,
-            per_page: req.query.per_page || 10,
-          },
-        }
-      );
-
-      res.json({
-        ok: true,
-        message: "🔥 REAL ITEMS LOADED",
-        data: response.data,
-      });
-    } catch (error) {
-      console.error("Chattanooga API Error:", error.response?.data || error.message);
-
-      res.status(error.response?.status || 500).json({
-        ok: false,
-        error: "Chattanooga API failed",
-        details: error.response?.data || error.message,
-      });
-    }
+    res.status(error.response?.status || 500).json({
+      ok: false,
+      error: "Chattanooga API failed",
+      details: error.response?.data || error.message,
+    });
   }
-);
+});
 
-/* ===============================
-   📦 Chattanooga Products Alias
-   (For Lovable Compatibility)
-================================= */
+app.get("/api/chattanooga/products", authenticateProxy, async (req, res) => {
+  try {
+    const authHeader = generateAuthHeader();
 
-app.get(
-  "/api/chattanooga/products",
-  authenticateProxy,
-  async (req, res) => {
-    try {
-      const authHeader = generateAuthHeader();
+    const response = await axios.get(`${CHATTANOOGA_BASE_URL}/items`, {
+      headers: {
+        Authorization: authHeader,
+        Accept: "application/json",
+      },
+      params: {
+        page: req.query.page || 1,
+        per_page: req.query.per_page || 10,
+      },
+    });
 
-      const response = await axios.get(
-        `${CHATTANOOGA_BASE_URL}/items`,
-        {
-          headers: {
-            Authorization: authHeader,
-            Accept: "application/json",
-          },
-          params: {
-            page: req.query.page || 1,
-            per_page: req.query.per_page || 10,
-          },
-        }
-      );
+    res.json({
+      ok: true,
+      message: "🔥 REAL PRODUCTS LOADED",
+      data: response.data,
+    });
+  } catch (error) {
+    console.error(
+      "🔥 Chattanooga API error:",
+      error.response?.data || error.message
+    );
 
-      res.json({
-        ok: true,
-        message: "🔥 REAL PRODUCTS LOADED",
-        data: response.data,
-      });
-    } catch (error) {
-      console.error("Chattanooga API Error:", error.response?.data || error.message);
-
-      res.status(error.response?.status || 500).json({
-        ok: false,
-        error: "Chattanooga API failed",
-        details: error.response?.data || error.message,
-      });
-    }
+    res.status(error.response?.status || 500).json({
+      ok: false,
+      error: "Chattanooga API failed",
+      details: error.response?.data || error.message,
+    });
   }
-);
-
-/* ===============================
-   ❌ 404 Handler
-================================= */
+});
 
 app.use((req, res) => {
   res.status(404).json({
@@ -228,10 +181,6 @@ app.use((req, res) => {
     error: "Route not found",
   });
 });
-
-/* ===============================
-   ⚠️ Global Error Handler
-================================= */
 
 app.use((err, req, res, next) => {
   console.error("Server error:", err);
@@ -242,10 +191,6 @@ app.use((err, req, res, next) => {
   });
 });
 
-/* ===============================
-   ▶️ Start Server
-================================= */
-
-app.listen(PORT, () => {
-console.log(`🔥 CFC distributor proxy running on port ${PORT}`);
+app.listen(PORT, "0.0.0.0", () => {
+  console.log(`🔥 CFC distributor proxy running on port ${PORT}`);
 });
