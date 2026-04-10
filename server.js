@@ -202,22 +202,24 @@ function buildSportsSouthDebug(error) {
 // Sports South fetchers
 // =====================================================
 async function fetchSportsSouthDailyItemUpdate({
-  lastUpdate = "1/1/1990",
-  lastItem = "",
+  lastUpdate = "01/01/1990",
+  lastItem = null,
 }) {
   requireSportsSouthCreds();
+
+  const params = {
+    CustomerNumber: SPORTS_SOUTH_CUSTOMER_NUMBER,
+    UserName: SPORTS_SOUTH_USERNAME,
+    Password: SPORTS_SOUTH_PASSWORD,
+    Source: SPORTS_SOUTH_SOURCE,
+    LastUpdate: lastUpdate || "01/01/1990",
+    ...(lastItem ? { LastItem: lastItem } : {}),
+  };
 
   const response = await axios.get(
     `${SPORTS_SOUTH_INVENTORY_URL}/DailyItemUpdate`,
     {
-      params: {
-        CustomerNumber: SPORTS_SOUTH_CUSTOMER_NUMBER,
-        UserName: SPORTS_SOUTH_USERNAME,
-        Password: SPORTS_SOUTH_PASSWORD,
-        Source: SPORTS_SOUTH_SOURCE,
-        LastUpdate: lastUpdate,
-        LastItem: lastItem,
-      },
+      params,
       timeout: 45000,
       responseType: "text",
       headers: {
@@ -245,24 +247,29 @@ async function fetchSportsSouthDailyItemUpdate({
 }
 
 async function fetchSportsSouthRawInventoryPage({
-  lastUpdate = "1/1/1990",
-  lastItem = "",
+  lastUpdate = "01/01/1990",
+  lastItem = null,
 }) {
   requireSportsSouthCreds();
+
+  const params = {
+    CustomerNumber: SPORTS_SOUTH_CUSTOMER_NUMBER,
+    UserName: SPORTS_SOUTH_USERNAME,
+    Password: SPORTS_SOUTH_PASSWORD,
+    Source: SPORTS_SOUTH_SOURCE,
+    LastUpdate: lastUpdate || "01/01/1990",
+    ...(lastItem ? { LastItem: lastItem } : {}),
+  };
 
   const response = await axios.get(
     `${SPORTS_SOUTH_INVENTORY_URL}/DailyItemUpdate`,
     {
-      params: {
-        CustomerNumber: SPORTS_SOUTH_CUSTOMER_NUMBER,
-        UserName: SPORTS_SOUTH_USERNAME,
-        Password: SPORTS_SOUTH_PASSWORD,
-        Source: SPORTS_SOUTH_SOURCE,
-        LastUpdate: lastUpdate,
-        LastItem: lastItem,
-      },
+      params,
       timeout: 45000,
       responseType: "text",
+      headers: {
+        Accept: "application/xml, text/xml, */*",
+      },
     }
   );
 
@@ -285,9 +292,9 @@ app.get("/", (req, res) => {
       chattanoogaItems: "/api/chattanooga/items/page?page=1&per_page=10",
       sportsSouthTest: "/api/sports-south/test",
       sportsSouthItems:
-        "/api/sports-south/items/page?last_update=1/1/1990&last_item=",
+        "/api/sports-south/items/page?last_update=01/01/1990",
       sportsSouthRaw:
-        "/api/sports-south/raw?last_update=1/1/1990&last_item=",
+        "/api/sports-south/raw?last_update=01/01/1990",
     },
   });
 });
@@ -399,9 +406,11 @@ app.get("/api/sports-south/test", verifyProxySecret, (req, res) => {
 
 app.get("/api/sports-south/raw", verifyProxySecret, async (req, res) => {
   try {
-    const lastUpdate = String(req.query.last_update || "1/1/1990");
+    const lastUpdate = String(req.query.last_update || "01/01/1990");
     const lastItem =
-      req.query.last_item == null ? "" : String(req.query.last_item);
+      req.query.last_item == null || req.query.last_item === ""
+        ? null
+        : String(req.query.last_item);
 
     const raw = await fetchSportsSouthRawInventoryPage({
       lastUpdate,
@@ -424,12 +433,14 @@ app.get(
   verifyProxySecret,
   async (req, res) => {
     try {
-      const lastUpdate = String(req.query.last_update || "1/1/1990");
+      const lastUpdate = String(req.query.last_update || "01/01/1990");
       const lastItem =
-        req.query.last_item == null ? "" : String(req.query.last_item);
+        req.query.last_item == null || req.query.last_item === ""
+          ? null
+          : String(req.query.last_item);
 
       console.log(
-        `🔥 HIT /api/sports-south/items/page?last_update=${lastUpdate}&last_item=${lastItem}`
+        `🔥 HIT /api/sports-south/items/page?last_update=${lastUpdate}&last_item=${lastItem || "null"}`
       );
 
       const data = await fetchSportsSouthDailyItemUpdate({
@@ -455,9 +466,11 @@ app.get(
 
 app.get("/api/sports-south/items", verifyProxySecret, async (req, res) => {
   try {
-    const lastUpdate = String(req.query.last_update || "1/1/1990");
+    const lastUpdate = String(req.query.last_update || "01/01/1990");
     const lastItem =
-      req.query.last_item == null ? "" : String(req.query.last_item);
+      req.query.last_item == null || req.query.last_item === ""
+        ? null
+        : String(req.query.last_item);
 
     const data = await fetchSportsSouthDailyItemUpdate({
       lastUpdate,
