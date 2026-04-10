@@ -247,5 +247,5 @@ app.use((err, req, res, next) => {
 ================================= */
 
 app.listen(PORT, () => {
-  console.log(`🔥 CFC distributor proxy running on port ${PORT}`);
+console.log(`🔥 CFC distributor proxy running on port ${PORT}`);
 });
