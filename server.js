@@ -40,7 +40,9 @@ function generateAuthHeader() {
 }
 
 function verifyProxySecret(req, res, next) {
-  const providedSecret = req.headers["x-proxy-secret"];
+  const providedSecret =
+    req.headers["x-proxy-secret"] ||
+    req.headers["x-proxy-auth-secret"];
 
   if (!providedSecret || providedSecret !== PROXY_SECRET) {
     return res.status(403).json({
@@ -88,7 +90,11 @@ app.get("/api/chattanooga/test", verifyProxySecret, (req, res) => {
     res.json({
       ok: true,
       message: "Auth generated successfully",
-      auth_preview: `${auth.substring(0, 20)}...`,
+      auth_preview: `${auth.substring(0, 30)}...`,
+      credentials_present: {
+        sid: Boolean(CHATTANOOGA_SID),
+        token: Boolean(CHATTANOOGA_TOKEN),
+      },
     });
   } catch (err) {
     res.status(500).json({
@@ -121,7 +127,7 @@ app.get("/api/chattanooga/items", verifyProxySecret, async (req, res) => {
       error.response?.data || error.message
     );
 
-    return res.status(500).json({
+    return res.status(error.response?.status || 500).json({
       ok: false,
       error: "Chattanooga API failed",
       details: error.response?.data || error.message,
@@ -131,6 +137,8 @@ app.get("/api/chattanooga/items", verifyProxySecret, async (req, res) => {
 
 app.get("/api/chattanooga/products", verifyProxySecret, async (req, res) => {
   try {
+    console.log("🔥 HIT /api/chattanooga/products");
+
     const response = await axios.get(`${CHATTANOOGA_BASE_URL}/products`, {
       headers: {
         Authorization: generateAuthHeader(),
@@ -150,7 +158,7 @@ app.get("/api/chattanooga/products", verifyProxySecret, async (req, res) => {
       error.response?.data || error.message
     );
 
-    return res.status(500).json({
+    return res.status(error.response?.status || 500).json({
       ok: false,
       error: "Chattanooga API failed",
       details: error.response?.data || error.message,
