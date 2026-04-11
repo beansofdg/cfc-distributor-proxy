@@ -203,7 +203,7 @@ function buildSportsSouthDebug(error) {
 // =====================================================
 async function fetchSportsSouthDailyItemUpdate({
   lastUpdate = "01/01/1990",
-  lastItem = null,
+  lastItem = "0",
 }) {
   requireSportsSouthCreds();
 
@@ -213,7 +213,7 @@ async function fetchSportsSouthDailyItemUpdate({
     Password: SPORTS_SOUTH_PASSWORD,
     Source: SPORTS_SOUTH_SOURCE,
     LastUpdate: lastUpdate || "01/01/1990",
-    ...(lastItem ? { LastItem: lastItem } : {}),
+    LastItem: lastItem || "0",
   };
 
   const response = await axios.get(
@@ -248,7 +248,7 @@ async function fetchSportsSouthDailyItemUpdate({
 
 async function fetchSportsSouthRawInventoryPage({
   lastUpdate = "01/01/1990",
-  lastItem = null,
+  lastItem = "0",
 }) {
   requireSportsSouthCreds();
 
@@ -258,7 +258,7 @@ async function fetchSportsSouthRawInventoryPage({
     Password: SPORTS_SOUTH_PASSWORD,
     Source: SPORTS_SOUTH_SOURCE,
     LastUpdate: lastUpdate || "01/01/1990",
-    ...(lastItem ? { LastItem: lastItem } : {}),
+    LastItem: lastItem || "0",
   };
 
   const response = await axios.get(
@@ -409,7 +409,7 @@ app.get("/api/sports-south/raw", verifyProxySecret, async (req, res) => {
     const lastUpdate = String(req.query.last_update || "01/01/1990");
     const lastItem =
       req.query.last_item == null || req.query.last_item === ""
-        ? null
+        ? "0"
         : String(req.query.last_item);
 
     const raw = await fetchSportsSouthRawInventoryPage({
@@ -436,11 +436,11 @@ app.get(
       const lastUpdate = String(req.query.last_update || "01/01/1990");
       const lastItem =
         req.query.last_item == null || req.query.last_item === ""
-          ? null
+          ? "0"
           : String(req.query.last_item);
 
       console.log(
-        `🔥 HIT /api/sports-south/items/page?last_update=${lastUpdate}&last_item=${lastItem || "null"}`
+        `🔥 HIT /api/sports-south/items/page?last_update=${lastUpdate}&last_item=${lastItem}`
       );
 
       const data = await fetchSportsSouthDailyItemUpdate({
@@ -469,7 +469,7 @@ app.get("/api/sports-south/items", verifyProxySecret, async (req, res) => {
     const lastUpdate = String(req.query.last_update || "01/01/1990");
     const lastItem =
       req.query.last_item == null || req.query.last_item === ""
-        ? null
+        ? "0"
         : String(req.query.last_item);
 
     const data = await fetchSportsSouthDailyItemUpdate({
