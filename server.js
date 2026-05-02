@@ -15,9 +15,6 @@ app.use(express.json());
 
 const PORT = process.env.PORT || 10000;
 
-// =====================================================
-// Shared proxy auth
-// =====================================================
 const PROXY_SECRET =
   process.env.PROXY_SECRET ||
   process.env.PROXY_AUTH_SECRET ||
@@ -37,9 +34,10 @@ function verifyProxySecret(req, res, next) {
   next();
 }
 
-// =====================================================
-// Chattanooga config
-// =====================================================
+/* =========================
+   Chattanooga
+========================= */
+
 const CHATTANOOGA_SID = process.env.CHATTANOOGA_SID;
 const CHATTANOOGA_TOKEN = process.env.CHATTANOOGA_TOKEN;
 
@@ -60,21 +58,6 @@ function generateChattanoogaAuthHeader() {
   return `Basic ${CHATTANOOGA_SID}:${md5Hash}`;
 }
 
-function normalizeChattanoogaItemsPayload(raw) {
-  const items =
-    raw?.items ||
-    raw?.data ||
-    raw?.results ||
-    (Array.isArray(raw) ? raw : []);
-
-  const nextPage = raw?.next_page ?? raw?.nextPage ?? null;
-
-  return {
-    items: Array.isArray(items) ? items : [],
-    next_page: nextPage,
-  };
-}
-
 async function fetchChattanoogaItemsPage(page = 1, perPage = 10) {
   const response = await axios.get(`${CHATTANOOGA_BASE_URL}/items`, {
     headers: {
@@ -86,20 +69,38 @@ async function fetchChattanoogaItemsPage(page = 1, perPage = 10) {
       page,
       per_page: perPage,
     },
-    timeout: 20000,
+    timeout: 30000,
   });
 
-  return normalizeChattanoogaItemsPayload(response.data);
+  const raw = response.data;
+
+  const items =
+    raw?.items ||
+    raw?.data ||
+    raw?.results ||
+    (Array.isArray(raw) ? raw : []);
+
+  const nextPage =
+    raw?.next_page ||
+    raw?.nextPage ||
+    raw?.pagination?.next_page ||
+    null;
+
+  return {
+    items: Array.isArray(items) ? items : [],
+    next_page: nextPage,
+  };
 }
 
-// =====================================================
-// Sports South config
-// =====================================================
+/* =========================
+   Sports South
+========================= */
+
 const SPORTS_SOUTH_USERNAME = process.env.SPORTS_SOUTH_USERNAME;
 const SPORTS_SOUTH_PASSWORD = process.env.SPORTS_SOUTH_PASSWORD;
 const SPORTS_SOUTH_CUSTOMER_NUMBER =
   process.env.SPORTS_SOUTH_CUSTOMER_NUMBER;
-const SPORTS_SOUTH_SOURCE = process.env.SPORTS_SOUTH_SOURCE;
+const SPORTS_SOUTH_SOURCE = process.env.SPORTS_SOUTH_SOURCE || "";
 
 const SPORTS_SOUTH_INVENTORY_URL =
   process.env.SPORTS_SOUTH_INVENTORY_URL ||
@@ -109,16 +110,12 @@ function requireSportsSouthCreds() {
   if (
     !SPORTS_SOUTH_USERNAME ||
     !SPORTS_SOUTH_PASSWORD ||
-    !SPORTS_SOUTH_CUSTOMER_NUMBER ||
-    !SPORTS_SOUTH_SOURCE
+    !SPORTS_SOUTH_CUSTOMER_NUMBER
   ) {
     throw new Error("Missing Sports South credentials");
   }
 }
 
-// =====================================================
-// XML helpers
-// =====================================================
 function toArray(value) {
   if (!value) return [];
   return Array.isArray(value) ? value : [value];
@@ -174,6 +171,7 @@ function extractTableRows(parsed) {
 
 function getLastItemFromRows(rows) {
   if (!rows.length) return null;
+
   const last = rows[rows.length - 1];
 
   return (
@@ -198,29 +196,24 @@ function buildSportsSouthDebug(error) {
   };
 }
 
-// =====================================================
-// Sports South fetchers
-// =====================================================
 async function fetchSportsSouthDailyItemUpdate({
-  lastUpdate = "01/01/1990",
-  lastItem = "0",
+  lastUpdate = "1/1/1990",
+  lastItem = "",
 }) {
   requireSportsSouthCreds();
-
-  const params = {
-    CustomerNumber: SPORTS_SOUTH_CUSTOMER_NUMBER,
-    UserName: SPORTS_SOUTH_USERNAME,
-    Password: SPORTS_SOUTH_PASSWORD,
-    Source: SPORTS_SOUTH_SOURCE,
-    LastUpdate: lastUpdate || "01/01/1990",
-    LastItem: lastItem || "0",
-  };
 
   const response = await axios.get(
     `${SPORTS_SOUTH_INVENTORY_URL}/DailyItemUpdate`,
     {
-      params,
-      timeout: 45000,
+      params: {
+        CustomerNumber: SPORTS_SOUTH_CUSTOMER_NUMBER,
+        UserName: SPORTS_SOUTH_USERNAME,
+        Password: SPORTS_SOUTH_PASSWORD,
+        Source: SPORTS_SOUTH_SOURCE,
+        LastUpdate: lastUpdate,
+        LastItem: lastItem,
+      },
+      timeout: 60000,
       responseType: "text",
       headers: {
         Accept: "application/xml, text/xml, */*",
@@ -247,25 +240,23 @@ async function fetchSportsSouthDailyItemUpdate({
 }
 
 async function fetchSportsSouthRawInventoryPage({
-  lastUpdate = "01/01/1990",
-  lastItem = "0",
+  lastUpdate = "1/1/1990",
+  lastItem = "",
 }) {
   requireSportsSouthCreds();
-
-  const params = {
-    CustomerNumber: SPORTS_SOUTH_CUSTOMER_NUMBER,
-    UserName: SPORTS_SOUTH_USERNAME,
-    Password: SPORTS_SOUTH_PASSWORD,
-    Source: SPORTS_SOUTH_SOURCE,
-    LastUpdate: lastUpdate || "01/01/1990",
-    LastItem: lastItem || "0",
-  };
 
   const response = await axios.get(
     `${SPORTS_SOUTH_INVENTORY_URL}/DailyItemUpdate`,
     {
-      params,
-      timeout: 45000,
+      params: {
+        CustomerNumber: SPORTS_SOUTH_CUSTOMER_NUMBER,
+        UserName: SPORTS_SOUTH_USERNAME,
+        Password: SPORTS_SOUTH_PASSWORD,
+        Source: SPORTS_SOUTH_SOURCE,
+        LastUpdate: lastUpdate,
+        LastItem: lastItem,
+      },
+      timeout: 60000,
       responseType: "text",
       headers: {
         Accept: "application/xml, text/xml, */*",
@@ -276,9 +267,10 @@ async function fetchSportsSouthRawInventoryPage({
   return response.data;
 }
 
-// =====================================================
-// Root / health
-// =====================================================
+/* =========================
+   Health / root
+========================= */
+
 app.get("/", (req, res) => {
   res.json({
     ok: true,
@@ -292,9 +284,9 @@ app.get("/", (req, res) => {
       chattanoogaItems: "/api/chattanooga/items/page?page=1&per_page=10",
       sportsSouthTest: "/api/sports-south/test",
       sportsSouthItems:
-        "/api/sports-south/items/page?last_update=01/01/1990",
+        "/api/sports-south/items/page?last_update=1/1/1990&last_item=",
       sportsSouthRaw:
-        "/api/sports-south/raw?last_update=01/01/1990",
+        "/api/sports-south/raw?last_update=1/1/1990&last_item=",
     },
   });
 });
@@ -321,9 +313,10 @@ app.get("/api/test", verifyProxySecret, (req, res) => {
   });
 });
 
-// =====================================================
-// Chattanooga routes
-// =====================================================
+/* =========================
+   Chattanooga Routes
+========================= */
+
 app.get("/api/chattanooga/test", verifyProxySecret, (req, res) => {
   try {
     const auth = generateChattanoogaAuthHeader();
@@ -361,7 +354,7 @@ app.get(
 
       const data = await fetchChattanoogaItemsPage(page, perPage);
 
-      return res.json({
+      res.json({
         items: data.items,
         next_page: data.next_page,
       });
@@ -371,17 +364,18 @@ app.get(
         error.response?.data || error.message
       );
 
-      return res.status(error.response?.status || 500).json({
-        error: "Failed to fetch items",
+      res.status(error.response?.status || 500).json({
+        error: "Failed to fetch Chattanooga items",
         details: error.response?.data || error.message,
       });
     }
   }
 );
 
-// =====================================================
-// Sports South routes
-// =====================================================
+/* =========================
+   Sports South Routes
+========================= */
+
 app.get("/api/sports-south/test", verifyProxySecret, (req, res) => {
   try {
     requireSportsSouthCreds();
@@ -406,11 +400,9 @@ app.get("/api/sports-south/test", verifyProxySecret, (req, res) => {
 
 app.get("/api/sports-south/raw", verifyProxySecret, async (req, res) => {
   try {
-    const lastUpdate = String(req.query.last_update || "01/01/1990");
+    const lastUpdate = String(req.query.last_update || "1/1/1990");
     const lastItem =
-      req.query.last_item == null || req.query.last_item === ""
-        ? "0"
-        : String(req.query.last_item);
+      req.query.last_item == null ? "" : String(req.query.last_item);
 
     const raw = await fetchSportsSouthRawInventoryPage({
       lastUpdate,
@@ -419,11 +411,12 @@ app.get("/api/sports-south/raw", verifyProxySecret, async (req, res) => {
 
     res.type("application/xml").send(raw);
   } catch (error) {
-    console.error("❌ Sports South raw error:", buildSportsSouthDebug(error));
+    const debug = buildSportsSouthDebug(error);
+    console.error("❌ Sports South raw error:", debug);
 
-    return res.status(error.response?.status || 500).json({
+    res.status(error.response?.status || 500).json({
       error: "Failed to fetch Sports South raw XML",
-      details: buildSportsSouthDebug(error),
+      details: debug,
     });
   }
 });
@@ -433,11 +426,9 @@ app.get(
   verifyProxySecret,
   async (req, res) => {
     try {
-      const lastUpdate = String(req.query.last_update || "01/01/1990");
+      const lastUpdate = String(req.query.last_update || "1/1/1990");
       const lastItem =
-        req.query.last_item == null || req.query.last_item === ""
-          ? "0"
-          : String(req.query.last_item);
+        req.query.last_item == null ? "" : String(req.query.last_item);
 
       console.log(
         `🔥 HIT /api/sports-south/items/page?last_update=${lastUpdate}&last_item=${lastItem}`
@@ -448,7 +439,7 @@ app.get(
         lastItem,
       });
 
-      return res.json({
+      res.json({
         items: data.items,
         next_page: data.next_page,
       });
@@ -456,7 +447,7 @@ app.get(
       const debug = buildSportsSouthDebug(error);
       console.error("❌ Sports South items/page error:", debug);
 
-      return res.status(error.response?.status || 500).json({
+      res.status(error.response?.status || 500).json({
         error: "Failed to fetch Sports South items",
         details: debug,
       });
@@ -466,18 +457,16 @@ app.get(
 
 app.get("/api/sports-south/items", verifyProxySecret, async (req, res) => {
   try {
-    const lastUpdate = String(req.query.last_update || "01/01/1990");
+    const lastUpdate = String(req.query.last_update || "1/1/1990");
     const lastItem =
-      req.query.last_item == null || req.query.last_item === ""
-        ? "0"
-        : String(req.query.last_item);
+      req.query.last_item == null ? "" : String(req.query.last_item);
 
     const data = await fetchSportsSouthDailyItemUpdate({
       lastUpdate,
       lastItem,
     });
 
-    return res.json({
+    res.json({
       ok: true,
       supplier: "sports_south",
       count: data.count,
@@ -488,7 +477,7 @@ app.get("/api/sports-south/items", verifyProxySecret, async (req, res) => {
     const debug = buildSportsSouthDebug(error);
     console.error("❌ Sports South items error:", debug);
 
-    return res.status(error.response?.status || 500).json({
+    res.status(error.response?.status || 500).json({
       ok: false,
       error: "Sports South API failed",
       details: debug,
@@ -496,9 +485,10 @@ app.get("/api/sports-south/items", verifyProxySecret, async (req, res) => {
   }
 });
 
-// =====================================================
-// 404 / error handlers
-// =====================================================
+/* =========================
+   404 / Error Handlers
+========================= */
+
 app.use((req, res) => {
   res.status(404).json({
     error: "Route not found",
@@ -513,9 +503,10 @@ app.use((err, req, res, next) => {
   });
 });
 
-// =====================================================
-// Start server
-// =====================================================
+/* =========================
+   Start Server
+========================= */
+
 app.listen(PORT, "0.0.0.0", () => {
   console.log(`🔥 CFC distributor proxy running on port ${PORT}`);
 });
