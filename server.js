@@ -27,6 +27,7 @@ function verifyProxySecret(req, res, next) {
 
   if (!providedSecret || providedSecret !== PROXY_SECRET) {
     return res.status(403).json({
+      ok: false,
       error: "Unauthorized - invalid proxy secret",
     });
   }
@@ -100,6 +101,8 @@ const SPORTS_SOUTH_USERNAME = process.env.SPORTS_SOUTH_USERNAME;
 const SPORTS_SOUTH_PASSWORD = process.env.SPORTS_SOUTH_PASSWORD;
 const SPORTS_SOUTH_CUSTOMER_NUMBER =
   process.env.SPORTS_SOUTH_CUSTOMER_NUMBER;
+
+// Source can be blank if Sports South does not require it
 const SPORTS_SOUTH_SOURCE = process.env.SPORTS_SOUTH_SOURCE || "";
 
 const SPORTS_SOUTH_INVENTORY_URL =
@@ -137,9 +140,11 @@ function normalizeRecord(record) {
   if (!record || typeof record !== "object") return record;
 
   const normalized = {};
+
   for (const [key, value] of Object.entries(record)) {
     normalized[key] = unwrapValue(value);
   }
+
   return normalized;
 }
 
@@ -199,20 +204,28 @@ function buildSportsSouthDebug(error) {
 async function fetchSportsSouthDailyItemUpdate({
   lastUpdate = "1/1/1990",
   lastItem = "",
+  type = 0,
 }) {
   requireSportsSouthCreds();
+
+  const params = {
+    CustomerNumber: SPORTS_SOUTH_CUSTOMER_NUMBER,
+    UserName: SPORTS_SOUTH_USERNAME,
+    Password: SPORTS_SOUTH_PASSWORD,
+    LastUpdate: lastUpdate,
+    LastItem: lastItem,
+    Type: Number(type),
+  };
+
+  // Only include Source if it exists
+  if (SPORTS_SOUTH_SOURCE !== "") {
+    params.Source = SPORTS_SOUTH_SOURCE;
+  }
 
   const response = await axios.get(
     `${SPORTS_SOUTH_INVENTORY_URL}/DailyItemUpdate`,
     {
-      params: {
-        CustomerNumber: SPORTS_SOUTH_CUSTOMER_NUMBER,
-        UserName: SPORTS_SOUTH_USERNAME,
-        Password: SPORTS_SOUTH_PASSWORD,
-        Source: SPORTS_SOUTH_SOURCE,
-        LastUpdate: lastUpdate,
-        LastItem: lastItem,
-      },
+      params,
       timeout: 60000,
       responseType: "text",
       headers: {
@@ -234,28 +247,34 @@ async function fetchSportsSouthDailyItemUpdate({
     items: rows,
     next_page: nextLastItem,
     count: rows.length,
-    raw_xml: response.data,
     parsed,
   };
 }
 
-async function fetchSportsSouthRawInventoryPage({
+async function fetchSportsSouthRaw({
   lastUpdate = "1/1/1990",
   lastItem = "",
+  type = 0,
 }) {
   requireSportsSouthCreds();
+
+  const params = {
+    CustomerNumber: SPORTS_SOUTH_CUSTOMER_NUMBER,
+    UserName: SPORTS_SOUTH_USERNAME,
+    Password: SPORTS_SOUTH_PASSWORD,
+    LastUpdate: lastUpdate,
+    LastItem: lastItem,
+    Type: Number(type),
+  };
+
+  if (SPORTS_SOUTH_SOURCE !== "") {
+    params.Source = SPORTS_SOUTH_SOURCE;
+  }
 
   const response = await axios.get(
     `${SPORTS_SOUTH_INVENTORY_URL}/DailyItemUpdate`,
     {
-      params: {
-        CustomerNumber: SPORTS_SOUTH_CUSTOMER_NUMBER,
-        UserName: SPORTS_SOUTH_USERNAME,
-        Password: SPORTS_SOUTH_PASSWORD,
-        Source: SPORTS_SOUTH_SOURCE,
-        LastUpdate: lastUpdate,
-        LastItem: lastItem,
-      },
+      params,
       timeout: 60000,
       responseType: "text",
       headers: {
@@ -284,9 +303,9 @@ app.get("/", (req, res) => {
       chattanoogaItems: "/api/chattanooga/items/page?page=1&per_page=10",
       sportsSouthTest: "/api/sports-south/test",
       sportsSouthItems:
-        "/api/sports-south/items/page?last_update=1/1/1990&last_item=",
+        "/api/sports-south/items/page?last_update=1/1/1990&last_item=&type=0",
       sportsSouthRaw:
-        "/api/sports-south/raw?last_update=1/1/1990&last_item=",
+        "/api/sports-south/raw?last_update=1/1/1990&last_item=&type=0",
     },
   });
 });
@@ -314,7 +333,7 @@ app.get("/api/test", verifyProxySecret, (req, res) => {
 });
 
 /* =========================
-   Chattanooga Routes
+   Chattanooga routes
 ========================= */
 
 app.get("/api/chattanooga/test", verifyProxySecret, (req, res) => {
@@ -332,6 +351,7 @@ app.get("/api/chattanooga/test", verifyProxySecret, (req, res) => {
     });
   } catch (err) {
     res.status(500).json({
+      ok: false,
       error: err.message,
     });
   }
@@ -348,10 +368,6 @@ app.get(
         Math.min(1000, Number(req.query.per_page) || 10)
       );
 
-      console.log(
-        `🔥 HIT /api/chattanooga/items/page?page=${page}&per_page=${perPage}`
-      );
-
       const data = await fetchChattanoogaItemsPage(page, perPage);
 
       res.json({
@@ -359,12 +375,8 @@ app.get(
         next_page: data.next_page,
       });
     } catch (error) {
-      console.error(
-        "❌ Chattanooga items/page error:",
-        error.response?.data || error.message
-      );
-
       res.status(error.response?.status || 500).json({
+        ok: false,
         error: "Failed to fetch Chattanooga items",
         details: error.response?.data || error.message,
       });
@@ -373,7 +385,7 @@ app.get(
 );
 
 /* =========================
-   Sports South Routes
+   Sports South routes
 ========================= */
 
 app.get("/api/sports-south/test", verifyProxySecret, (req, res) => {
@@ -393,6 +405,7 @@ app.get("/api/sports-south/test", verifyProxySecret, (req, res) => {
     });
   } catch (err) {
     res.status(500).json({
+      ok: false,
       error: err.message,
     });
   }
@@ -403,18 +416,20 @@ app.get("/api/sports-south/raw", verifyProxySecret, async (req, res) => {
     const lastUpdate = String(req.query.last_update || "1/1/1990");
     const lastItem =
       req.query.last_item == null ? "" : String(req.query.last_item);
+    const type = Number(req.query.type ?? 0);
 
-    const raw = await fetchSportsSouthRawInventoryPage({
+    const raw = await fetchSportsSouthRaw({
       lastUpdate,
       lastItem,
+      type,
     });
 
     res.type("application/xml").send(raw);
   } catch (error) {
     const debug = buildSportsSouthDebug(error);
-    console.error("❌ Sports South raw error:", debug);
 
     res.status(error.response?.status || 500).json({
+      ok: false,
       error: "Failed to fetch Sports South raw XML",
       details: debug,
     });
@@ -429,14 +444,12 @@ app.get(
       const lastUpdate = String(req.query.last_update || "1/1/1990");
       const lastItem =
         req.query.last_item == null ? "" : String(req.query.last_item);
-
-      console.log(
-        `🔥 HIT /api/sports-south/items/page?last_update=${lastUpdate}&last_item=${lastItem}`
-      );
+      const type = Number(req.query.type ?? 0);
 
       const data = await fetchSportsSouthDailyItemUpdate({
         lastUpdate,
         lastItem,
+        type,
       });
 
       res.json({
@@ -445,9 +458,9 @@ app.get(
       });
     } catch (error) {
       const debug = buildSportsSouthDebug(error);
-      console.error("❌ Sports South items/page error:", debug);
 
       res.status(error.response?.status || 500).json({
+        ok: false,
         error: "Failed to fetch Sports South items",
         details: debug,
       });
@@ -460,10 +473,12 @@ app.get("/api/sports-south/items", verifyProxySecret, async (req, res) => {
     const lastUpdate = String(req.query.last_update || "1/1/1990");
     const lastItem =
       req.query.last_item == null ? "" : String(req.query.last_item);
+    const type = Number(req.query.type ?? 0);
 
     const data = await fetchSportsSouthDailyItemUpdate({
       lastUpdate,
       lastItem,
+      type,
     });
 
     res.json({
@@ -475,7 +490,6 @@ app.get("/api/sports-south/items", verifyProxySecret, async (req, res) => {
     });
   } catch (error) {
     const debug = buildSportsSouthDebug(error);
-    console.error("❌ Sports South items error:", debug);
 
     res.status(error.response?.status || 500).json({
       ok: false,
@@ -486,11 +500,12 @@ app.get("/api/sports-south/items", verifyProxySecret, async (req, res) => {
 });
 
 /* =========================
-   404 / Error Handlers
+   404 / error handlers
 ========================= */
 
 app.use((req, res) => {
   res.status(404).json({
+    ok: false,
     error: "Route not found",
   });
 });
@@ -499,12 +514,13 @@ app.use((err, req, res, next) => {
   console.error("Server error:", err);
 
   res.status(500).json({
+    ok: false,
     error: "Internal server error",
   });
 });
 
 /* =========================
-   Start Server
+   Start server
 ========================= */
 
 app.listen(PORT, "0.0.0.0", () => {
