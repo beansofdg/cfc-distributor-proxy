@@ -204,6 +204,7 @@ function buildSportsSouthDebug(error) {
 async function fetchSportsSouthDailyItemUpdate({
   lastUpdate = "1/1/1990",
   lastItem = "",
+  Type: 0,
 }) {
   requireSportsSouthCreds();
 
