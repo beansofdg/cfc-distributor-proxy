@@ -214,7 +214,6 @@ async function fetchSportsSouthDailyItemUpdate({
     Password: SPORTS_SOUTH_PASSWORD,
     LastUpdate: lastUpdate,
     LastItem: lastItem,
-    Type: Number(type),
   };
 
   // Only include Source if it exists
@@ -264,7 +263,6 @@ async function fetchSportsSouthRaw({
     Password: SPORTS_SOUTH_PASSWORD,
     LastUpdate: lastUpdate,
     LastItem: lastItem,
-    Type: Number(type),
   };
 
   if (SPORTS_SOUTH_SOURCE !== "") {
