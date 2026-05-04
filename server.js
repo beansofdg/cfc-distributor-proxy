@@ -278,7 +278,7 @@ async function fetchSportsSouthRaw({
     soapBody,
     {
       timeout: 60000,
-      responseType: "arraybuffer",
+      responseType: "text",
   headers: {
   "Content-Type": "text/xml; charset=utf-8",
   "SOAPAction": "http://webservices.theshootingwarehouse.com/smart/Inventory.asmx/DailyItemUpdate",
@@ -287,9 +287,8 @@ async function fetchSportsSouthRaw({
     }
   );
 
-  const buffer = Buffer.from(response.data);
-
- const text = buffer.toString("utf-8");
+console.log(response.data);
+return response.data;
 console.log(text);
 return text;
 }
