@@ -456,7 +456,7 @@ app.get(
         req.query.last_item == null ? "" : String(req.query.last_item);
       const type = Number(req.query.type ?? 0);
 
-      const data = await fetchSportsSouthDailyItemUpdate({
+      const data = await fetchSportsSouthRaw({
         lastUpdate,
         lastItem,
       });
