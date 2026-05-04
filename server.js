@@ -262,7 +262,7 @@ async function fetchSportsSouthRaw({
                xmlns:xsd="http://www.w3.org/2001/XMLSchema"
                xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/">
   <soap:Body>
-    <DailyItemUpdate xmlns="http://webservices.theshootingwarehouse.com/Inventory">
+    <DailyItemUpdate xmlns="http://webservices.theshootingwarehouse.com/smart/Inventory.asmx">
       <CustomerNumber>${SPORTS_SOUTH_CUSTOMER_NUMBER}</CustomerNumber>
       <UserName>${SPORTS_SOUTH_USERNAME}</UserName>
       <Password>${SPORTS_SOUTH_PASSWORD}</Password>
