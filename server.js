@@ -281,7 +281,7 @@ async function fetchSportsSouthRaw({
       responseType: "text",
   headers: {
   "Content-Type": "text/xml; charset=utf-8",
-  "SOAPAction": `"http://webservices.theshootingwarehouse.com/smart/Inventory.asmx/DailyItemUpdate"`,
+  "SOAPAction": `"http://webservices.theshootingwarehouse.com/DailyItemUpdate"`,
   "Accept": "text/xml",
 },
     }
