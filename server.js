@@ -289,8 +289,6 @@ async function fetchSportsSouthRaw({
 
 console.log(response.data);
 return response.data;
-console.log(text);
-return text;
 }
 
 /* =========================
