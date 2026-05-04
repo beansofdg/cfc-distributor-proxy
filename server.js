@@ -212,7 +212,7 @@ async function fetchSportsSouthDailyItemUpdate({
     UserName: SPORTS_SOUTH_USERNAME,
     Password: SPORTS_SOUTH_PASSWORD,
     LastUpdate: lastUpdate,
-    Number(lastItem) || -1,
+    LastItem: Number(lastItem) || -1,
   };
 
   // Only include Source if it exists
