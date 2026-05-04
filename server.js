@@ -1,3 +1,4 @@
+import zlib from "zlib";
 import express from "express";
 import cors from "cors";
 import dotenv from "dotenv";
@@ -265,21 +266,24 @@ async function fetchSportsSouthRaw({
     Source: SPORTS_SOUTH_SOURCE || "WEB",
   };
 
-const response = await axios.get(
-  `${SPORTS_SOUTH_INVENTORY_URL}/DailyItemUpdate`,
-  {
-    params,
-    timeout: 60000,
-    responseType: "arraybuffer",
-    headers: {
-      Accept: "application/xml, text/xml, */*",
-    },
-  }
-);
+  const response = await axios.get(
+    `${SPORTS_SOUTH_INVENTORY_URL}/DailyItemUpdate`,
+    {
+      params,
+      timeout: 60000,
+      responseType: "arraybuffer",
+      headers: {
+        Accept: "application/xml, text/xml, */*",
+      },
+    }
+  );
 
-const decompressed = zlib.gunzipSync(response.data).toString("utf-8");
+  const decompressed = zlib
+    .gunzipSync(response.data)
+    .toString("utf-8");
 
-return decompressed;
+  return decompressed;
+}
 
 /* =========================
    Health / root
