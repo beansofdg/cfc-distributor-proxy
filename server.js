@@ -253,36 +253,48 @@ async function fetchSportsSouthDailyItemUpdate({
 
 async function fetchSportsSouthRaw({
   lastUpdate = "1/1/1990",
-  lastItem = "",
+  lastItem = -1,
 }) {
   requireSportsSouthCreds();
 
-  const params = {
-    CustomerNumber: SPORTS_SOUTH_CUSTOMER_NUMBER,
-    UserName: SPORTS_SOUTH_USERNAME,
-    Password: SPORTS_SOUTH_PASSWORD,
-    LastUpdate: lastUpdate,
-    LastItem: Number(lastItem) || -1,
-    Source: SPORTS_SOUTH_SOURCE || "WEB",
-  };
+  const soapBody = `<?xml version="1.0" encoding="utf-8"?>
+<soap:Envelope xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+               xmlns:xsd="http://www.w3.org/2001/XMLSchema"
+               xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/">
+  <soap:Body>
+    <DailyItemUpdate xmlns="http://webservices.theshootingwarehouse.com/smart/Inventory.asmx">
+      <CustomerNumber>${SPORTS_SOUTH_CUSTOMER_NUMBER}</CustomerNumber>
+      <UserName>${SPORTS_SOUTH_USERNAME}</UserName>
+      <Password>${SPORTS_SOUTH_PASSWORD}</Password>
+      <LastUpdate>${lastUpdate}</LastUpdate>
+      <LastItem>${Number(lastItem) || -1}</LastItem>
+      <Source>${SPORTS_SOUTH_SOURCE || "WEB"}</Source>
+    </DailyItemUpdate>
+  </soap:Body>
+</soap:Envelope>`;
 
-  const response = await axios.get(
-    `${SPORTS_SOUTH_INVENTORY_URL}/DailyItemUpdate`,
+  const response = await axios.post(
+    `${SPORTS_SOUTH_INVENTORY_URL}/Inventory.asmx`,
+    soapBody,
     {
-      params,
       timeout: 60000,
       responseType: "arraybuffer",
       headers: {
-        Accept: "application/xml, text/xml, */*",
+        "Content-Type": "text/xml; charset=utf-8",
+        SOAPAction:
+          "http://webservices.theshootingwarehouse.com/smart/Inventory.asmx/DailyItemUpdate",
+        Accept: "text/xml, application/xml, */*",
       },
     }
   );
 
-  const decompressed = zlib
-    .gunzipSync(response.data)
-    .toString("utf-8");
+  const buffer = Buffer.from(response.data);
 
-  return decompressed;
+  try {
+    return zlib.gunzipSync(buffer).toString("utf-8");
+  } catch {
+    return buffer.toString("utf-8");
+  }
 }
 
 /* =========================
