@@ -273,22 +273,29 @@ async function fetchSportsSouthRaw({
   </soap:Body>
 </soap:Envelope>`;
 
+try {
   const response = await axios.post(
     `${SPORTS_SOUTH_INVENTORY_URL}/Inventory.asmx`,
     soapBody,
     {
       timeout: 60000,
       responseType: "text",
-  headers: {
-  "Content-Type": "text/xml; charset=utf-8",
-  "SOAPAction": "http://webservices.theshootingwarehouse.com/smart/Inventory.asmx/DailyItemUpdate",
-  "Accept": "text/xml",
-},
+      headers: {
+        "Content-Type": "text/xml; charset=utf-8",
+        "SOAPAction": "http://webservices.theshootingwarehouse.com/smart/Inventory.asmx/DailyItemUpdate",
+        "Accept": "text/xml",
+      },
     }
   );
 
-console.log(response.data);
-return response.data;
+  console.log("SUCCESS:", response.data);
+  return response.data;
+
+} catch (error) {
+  console.error("ERROR FULL:", error);
+  console.error("ERROR RESPONSE:", error?.response?.data);
+  throw error;
+}
 }
 
 /* =========================
