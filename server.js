@@ -265,10 +265,6 @@ async function fetchSportsSouthRaw({
     Source: SPORTS_SOUTH_SOURCE || "WEB",
   };
 
-  if (SPORTS_SOUTH_SOURCE !== "") {
-    params.Source = SPORTS_SOUTH_SOURCE;
-  }
-
   const response = await axios.get(
     `${SPORTS_SOUTH_INVENTORY_URL}/DailyItemUpdate`,
     {
