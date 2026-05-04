@@ -280,10 +280,10 @@ async function fetchSportsSouthRaw({
       timeout: 60000,
       responseType: "arraybuffer",
       headers: {
-        "Content-Type": "text/xml; charset=utf-8",
-        "SOAPAction": "http://webservices.theshootingwarehouse.com/Inventory/DailyItemUpdate",
-        "Accept": "text/xml",
-      },
+  "Content-Type": "text/xml; charset=utf-8",
+  "SOAPAction": "http://webservices.theshootingwarehouse.com/DailyItemUpdate",
+  "Accept": "text/xml",
+}
     }
   );
 
