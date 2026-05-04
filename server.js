@@ -253,7 +253,6 @@ async function fetchSportsSouthDailyItemUpdate({
 async function fetchSportsSouthRaw({
   lastUpdate = "1/1/1990",
   lastItem = "",
-  type = 0,
 }) {
   requireSportsSouthCreds();
 
@@ -262,7 +261,8 @@ async function fetchSportsSouthRaw({
     UserName: SPORTS_SOUTH_USERNAME,
     Password: SPORTS_SOUTH_PASSWORD,
     LastUpdate: lastUpdate,
-    LastItem: lastItem,
+    LastItem: Number(lastItem) || -1,
+    Source: SPORTS_SOUTH_SOURCE || "WEB",
   };
 
   if (SPORTS_SOUTH_SOURCE !== "") {
