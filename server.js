@@ -289,11 +289,9 @@ async function fetchSportsSouthRaw({
 
   const buffer = Buffer.from(response.data);
 
-  try {
-    return zlib.gunzipSync(buffer).toString("utf-8");
-  } catch {
-    return buffer.toString("utf-8");
-  }
+ const text = buffer.toString("utf-8");
+console.log(text);
+return text;
 }
 
 /* =========================
