@@ -265,20 +265,21 @@ async function fetchSportsSouthRaw({
     Source: SPORTS_SOUTH_SOURCE || "WEB",
   };
 
-  const response = await axios.get(
-    `${SPORTS_SOUTH_INVENTORY_URL}/DailyItemUpdate`,
-    {
-      params,
-      timeout: 60000,
-      responseType: "text",
-      headers: {
-        Accept: "application/xml, text/xml, */*",
-      },
-    }
-  );
+const response = await axios.get(
+  `${SPORTS_SOUTH_INVENTORY_URL}/DailyItemUpdate`,
+  {
+    params,
+    timeout: 60000,
+    responseType: "arraybuffer",
+    headers: {
+      Accept: "application/xml, text/xml, */*",
+    },
+  }
+);
 
-  return response.data;
-}
+const decompressed = zlib.gunzipSync(response.data).toString("utf-8");
+
+return decompressed;
 
 /* =========================
    Health / root
