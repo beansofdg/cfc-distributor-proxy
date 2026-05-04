@@ -459,7 +459,6 @@ app.get(
       const data = await fetchSportsSouthDailyItemUpdate({
         lastUpdate,
         lastItem,
-        type,
       });
 
       res.json({
