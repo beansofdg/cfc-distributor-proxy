@@ -251,10 +251,10 @@ async function fetchSportsSouthDailyItemUpdate({
   };
 }
 
-async function fetchSportsSouthRaw({
+async function fetchSportsSouthRaw(
   lastUpdate = "1/1/1990",
   lastItem = -1,
-}) {
+) {
   requireSportsSouthCreds();
 
   const soapBody = `<?xml version="1.0" encoding="utf-8"?>
