@@ -253,7 +253,7 @@ async function fetchSportsSouthDailyItemUpdate({
 
 async function fetchSportsSouthRaw(
   lastUpdate = "1/1/1990",
-  lastItem = -1,
+  lastItem = -1
 ) {
   requireSportsSouthCreds();
 
