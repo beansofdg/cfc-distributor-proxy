@@ -262,14 +262,14 @@ async function fetchSportsSouthRaw(
                xmlns:xsd="http://www.w3.org/2001/XMLSchema"
                xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/">
   <soap:Body>
-    <GetDailyItemUpdate xmlns="http://webservices.theshootingwarehouse.com/smart/Inventory.asmx">
+    <DailyItemUpdate xmlns="http://webservices.theshootingwarehouse.com/smart/Inventory.asmx">
       <CustomerNumber>${SPORTS_SOUTH_CUSTOMER_NUMBER}</CustomerNumber>
       <UserName>${SPORTS_SOUTH_USERNAME}</UserName>
       <Password>${SPORTS_SOUTH_PASSWORD}</Password>
       <LastUpdate>${lastUpdate}</LastUpdate>
       <LastItem>${Number(lastItem) || -1}</LastItem>
       <Source>${SPORTS_SOUTH_SOURCE || "WEB"}</Source>
-    </GetDailyItemUpdate>
+    </DailyItemUpdate>
   </soap:Body>
 </soap:Envelope>`;
 
@@ -282,7 +282,7 @@ try {
       responseType: "text",
       headers: {
         "Content-Type": "text/xml; charset=utf-8",
-        "SOAPAction": "http://webservices.theshootingwarehouse.com/smart/Inventory.asmx/GetDailyItemUpdate",
+        "SOAPAction": "http://webservices.theshootingwarehouse.com/smart/Inventory.asmx/DailyItemUpdate",
         "Accept": "text/xml",
       },
     }
