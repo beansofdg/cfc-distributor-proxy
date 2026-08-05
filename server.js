@@ -217,7 +217,8 @@ app.get(
     }
   }
 );
-
+app.use("/api/chattanooga", require("./chattanooga"));
+app.use("/api/sports-south", require("./sports-south"));
 /* ===============================
    ❌ 404 Handler
 ================================= */
