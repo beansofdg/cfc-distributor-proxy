@@ -8,7 +8,7 @@ import cors from "cors";
 import axios from "axios";
 import dotenv from "dotenv";
 import crypto from "crypto";
-import sportsSouth from "./sports-south.cjs";
+import sportsSouth from "./sports-south.mjs";
 
 dotenv.config();
 
