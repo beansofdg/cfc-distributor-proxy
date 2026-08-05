@@ -218,7 +218,10 @@ app.get(
   }
 );
 app.use("/api/chattanooga", require("./chattanooga"));
-app.use("/api/sports-south", require("./sports-south"));
+/* Sports South Routes */
+app.use("/api/sports-south", require("./sports-south.cjs"));
+
+
 /* ===============================
    ❌ 404 Handler
 ================================= */
