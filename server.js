@@ -218,7 +218,7 @@ app.get(
     }
   }
 );
-
+app.use("/api/sports-south", authenticateProxy, sportsSouth);
 /* ===============================
    ❌ 404 Handler
 ================================= */
