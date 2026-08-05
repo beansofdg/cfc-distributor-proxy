@@ -3,14 +3,18 @@
  *
  * Mount in your ESM app entry (server.js):
  *   import sportsSouth from "./sports-south.mjs";
- *   app.use("/api/sports-south", authenticateProxy, sportsSouth);
+ *   app.use("/api/sports-south", sportsSouth);
  *
  * Verified against the live WSDL: http://webservices.theshootingwarehouse.com/smart/Inventory.asmx?WSDL
  *   Namespace  : http://webservices.theshootingwarehouse.com/smart/Inventory.asmx
  *   SOAPAction : <namespace>/<Operation>
- *   DailyItemUpdate(CustomerNumber, UserName, Password, LastUpdate, LastItem:int, Source)
+ *   DailyItemUpdate(CustomerNumber, UserName, Password, LastUpdate, LastItem:int, Source)  <-- order matters
  *   OnhandUpdate(CustomerNumber, UserName, Password, Source)
  *   ActiveItemCount(CustomerNumber, UserName, Password, Source)
+ *
+ * Memory note: the full catalog is ~60k rows / tens of MB of XML. The response is
+ * parsed as a STREAM and each row is trimmed to a small whitelist of fields, so the
+ * process never holds the whole payload in memory (Render free tier friendly).
  *
  * Requires Node 18+ (global fetch).
  */
@@ -44,7 +48,40 @@ const ENDPOINT = normalizeEndpoint(
 const USER = process.env.SPORTS_SOUTH_USERNAME || "";
 const PASS = process.env.SPORTS_SOUTH_PASSWORD || "";
 const CUST = process.env.SPORTS_SOUTH_CUSTOMER_NUMBER || "";
+// Sports South support advised leaving Source blank for this account.
 const SOURCE = process.env.SPORTS_SOUTH_SOURCE || "";
+
+// Only these columns are kept per row. Everything else is dropped while parsing.
+const KEEP_FIELDS = new Set([
+  "ITEMNO",
+  "IDENT",
+  "ITUPC",
+  "IDESC",
+  "IDESC2",
+  "SHDESC",
+  "TXTREF",
+  "CPRC",
+  "MFPRC",
+  "SRP",
+  "RETAIL",
+  "QTYOH",
+  "WTPBX",
+  "CATDES",
+  "SUBDEPT",
+  "ITBRAND",
+  "MFGNO",
+  "MFGINO",
+  "IMODEL",
+  "SERIES",
+  "ITYPE",
+  "IDEPT",
+  "PICREF",
+  "IMGFILE",
+  "IMGNAME",
+  "LENGTH",
+  "HEIGHT",
+  "WIDTH",
+]);
 
 function ensureCreds() {
   const missing = [];
@@ -100,6 +137,49 @@ function redact(xml) {
   );
 }
 
+function decodeEntities(s) {
+  return s
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"')
+    .replace(/&apos;/g, "'")
+    .replace(/&#(\d+);/g, (_m, d) => String.fromCharCode(Number(d)))
+    .replace(/&amp;/g, "&");
+}
+
+/** Parse a single decoded <Table>…</Table> block into a trimmed row object. */
+function parseRowBlock(inner) {
+  const row = {};
+  const colRe = /<([A-Za-z0-9_]+)[^>]*>([\s\S]*?)<\/\1>/g;
+  let c;
+  while ((c = colRe.exec(inner)) !== null) {
+    const key = c[1].toUpperCase();
+    if (KEEP_FIELDS.has(key)) row[key] = c[2].trim();
+  }
+  return row;
+}
+
+/** Non-streaming parse for small payloads (test/inventory routes). */
+function parseRows(text) {
+  const decoded = decodeEntities(text);
+  const rows = [];
+  const tableRe = /<Table[^>]*>([\s\S]*?)<\/Table>/g;
+  let m;
+  while ((m = tableRe.exec(decoded)) !== null) {
+    const row = parseRowBlock(m[1]);
+    if (Object.keys(row).length) rows.push(row);
+  }
+  return rows;
+}
+
+function detectFault(status, text) {
+  if (status >= 400 || /<(?:soap:)?Fault>/i.test(text)) {
+    const f = text.match(/<faultstring[^>]*>([\s\S]*?)<\/faultstring>/i);
+    return f ? f[1].trim() : "HTTP " + status;
+  }
+  return null;
+}
+
 async function callSoap(action, inner, timeoutMs) {
   const body = buildEnvelope(action, inner);
   const soapAction = NAMESPACE + "/" + action;
@@ -130,41 +210,95 @@ async function callSoap(action, inner, timeoutMs) {
   }
 }
 
-function decodeEntities(s) {
-  return s
-    .replace(/&lt;/g, "<")
-    .replace(/&gt;/g, ">")
-    .replace(/&quot;/g, '"')
-    .replace(/&apos;/g, "'")
-    .replace(/&amp;/g, "&");
-}
+/**
+ * POST a SOAP call and stream-parse <Table> rows out of the response without
+ * ever buffering the whole body. Calls onRow(trimmedRow) for each row.
+ */
+async function callSoapStreamRows(action, inner, onRow, timeoutMs) {
+  const body = buildEnvelope(action, inner);
+  const soapAction = NAMESPACE + "/" + action;
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs || 300000);
 
-function parseRows(text) {
-  const decoded = decodeEntities(text);
-  const rows = [];
-  const tableRe = /<Table[^>]*>([\s\S]*?)<\/Table>/g;
-  let m;
-  while ((m = tableRe.exec(decoded)) !== null) {
-    const row = {};
-    const colRe = /<([A-Za-z0-9_]+)[^>]*>([\s\S]*?)<\/\1>/g;
-    let c;
-    while ((c = colRe.exec(m[1])) !== null) row[c[1]] = c[2].trim();
-    if (Object.keys(row).length) rows.push(row);
+  try {
+    console.log("[SportsSouth] STREAM POST " + ENDPOINT + " SOAPAction=" + soapAction);
+    const res = await fetch(ENDPOINT, {
+      method: "POST",
+      headers: {
+        "Content-Type": "text/xml; charset=utf-8",
+        SOAPAction: soapAction,
+        "User-Agent": "cfc-distributor-proxy/1.0",
+      },
+      body,
+      signal: controller.signal,
+    });
+
+    if (res.status !== 200 || !res.body) {
+      const text = await res.text().catch(() => "");
+      const fault = detectFault(res.status, text) || "HTTP " + res.status;
+      throw new Error("Sports South " + action + " fault: " + fault);
+    }
+
+    const decoder = new TextDecoder("utf-8");
+    let buffer = "";
+    let count = 0;
+    let faultSeen = null;
+
+    // Rows arrive either as raw <Table>…</Table> or XML-escaped &lt;Table&gt;…
+    const OPEN_RAW = "<Table";
+    const CLOSE_RAW = "</Table>";
+    const OPEN_ESC = "&lt;Table";
+    const CLOSE_ESC = "&lt;/Table&gt;";
+
+    for await (const chunk of res.body) {
+      buffer += decoder.decode(chunk, { stream: true });
+
+      if (!faultSeen && /<(?:soap:)?Fault>/i.test(buffer)) {
+        const f = buffer.match(/<faultstring[^>]*>([\s\S]*?)<\/faultstring>/i);
+        faultSeen = f ? f[1].trim() : "SOAP Fault";
+      }
+
+      // Drain every complete row currently in the buffer.
+      for (;;) {
+        const escaped = buffer.indexOf(OPEN_ESC) !== -1;
+        const openTok = escaped ? OPEN_ESC : OPEN_RAW;
+        const closeTok = escaped ? CLOSE_ESC : CLOSE_RAW;
+
+        const start = buffer.indexOf(openTok);
+        if (start === -1) break;
+        const end = buffer.indexOf(closeTok, start);
+        if (end === -1) break;
+
+        const rawBlock = buffer.slice(start, end + closeTok.length);
+        buffer = buffer.slice(end + closeTok.length);
+
+        const decoded = escaped ? decodeEntities(rawBlock) : rawBlock;
+        const bodyStart = decoded.indexOf(">");
+        const bodyEnd = decoded.lastIndexOf("</Table>");
+        if (bodyStart !== -1 && bodyEnd > bodyStart) {
+          const row = parseRowBlock(decoded.slice(bodyStart + 1, bodyEnd));
+          if (Object.keys(row).length) {
+            onRow(row);
+            count += 1;
+          }
+        }
+      }
+
+      // Keep the tail short so a partial row can still complete, but never grow.
+      if (buffer.length > 1_000_000) buffer = buffer.slice(-100_000);
+    }
+
+    if (faultSeen && count === 0) {
+      throw new Error("Sports South " + action + " fault: " + faultSeen);
+    }
+    return count;
+  } finally {
+    clearTimeout(timer);
   }
-  return rows;
 }
 
-function detectFault(status, text) {
-  if (status >= 400 || /<(?:soap:)?Fault>/i.test(text)) {
-    const f = text.match(/<faultstring[^>]*>([\s\S]*?)<\/faultstring>/i);
-    return f ? f[1].trim() : "HTTP " + status;
-  }
-  return null;
-}
-
-async function dailyItemUpdate(lastItem, lastUpdate) {
-  ensureCreds();
-  const inner =
+function dailyItemUpdateInner(lastItem, lastUpdate) {
+  return (
     credBlock() +
     "\n      <LastUpdate>" +
     esc(lastUpdate || "1/1/1990") +
@@ -172,46 +306,44 @@ async function dailyItemUpdate(lastItem, lastUpdate) {
     Math.trunc(lastItem) +
     "</LastItem>\n      <Source>" +
     esc(SOURCE) +
-    "</Source>";
-  const { status, text } = await callSoap("DailyItemUpdate", inner);
-  const fault = detectFault(status, text);
-  if (fault) throw new Error("Sports South DailyItemUpdate fault: " + fault);
-  return parseRows(text);
+    "</Source>"
+  );
 }
 
 let catalogCache = null;
+let catalogInFlight = null;
 const CATALOG_TTL_MS = 30 * 60 * 1000;
 const MAX_CALLS = 60;
 
-async function fetchFullCatalog(force) {
+async function buildCatalog() {
   ensureCreds();
-  if (!force && catalogCache && Date.now() - catalogCache.fetchedAt < CATALOG_TTL_MS) {
-    return catalogCache.rows;
-  }
-
   const bySku = new Map();
   let lastItem = -1;
   let calls = 0;
 
   while (calls < MAX_CALLS) {
-    const rows = await dailyItemUpdate(lastItem);
-    calls += 1;
-    if (!rows.length) break;
-
     let maxItem = lastItem;
-    for (const row of rows) {
-      const sku = String(row.ITEMNO || row.IDENT || "").trim();
-      if (sku) bySku.set(sku, row);
-      const n = parseInt(String(row.ITEMNO || row.IDENT || "").replace(/[^0-9]/g, ""), 10);
-      if (Number.isFinite(n) && n > maxItem) maxItem = n;
-    }
+    let rowsThisCall = 0;
+
+    const received = await callSoapStreamRows(
+      "DailyItemUpdate",
+      dailyItemUpdateInner(lastItem),
+      (row) => {
+        rowsThisCall += 1;
+        const sku = String(row.ITEMNO || row.IDENT || "").trim();
+        if (sku) bySku.set(sku, row);
+        const n = parseInt(sku.replace(/[^0-9]/g, ""), 10);
+        if (Number.isFinite(n) && n > maxItem) maxItem = n;
+      }
+    );
+    calls += 1;
 
     console.log(
-      "[SportsSouth] call " + calls + ": " + rows.length + " rows, lastItem " +
+      "[SportsSouth] call " + calls + ": " + received + " rows, lastItem " +
         lastItem + " -> " + maxItem + ", total " + bySku.size
     );
 
-    if (maxItem <= lastItem) break;
+    if (!rowsThisCall || maxItem <= lastItem) break;
     lastItem = maxItem;
   }
 
@@ -219,6 +351,21 @@ async function fetchFullCatalog(force) {
   catalogCache = { fetchedAt: Date.now(), rows };
   return rows;
 }
+
+async function fetchFullCatalog(force) {
+  ensureCreds();
+  if (!force && catalogCache && Date.now() - catalogCache.fetchedAt < CATALOG_TTL_MS) {
+    return catalogCache.rows;
+  }
+  // Collapse concurrent cold-start requests into one upstream pull.
+  if (catalogInFlight) return catalogInFlight;
+  catalogInFlight = buildCatalog().finally(() => {
+    catalogInFlight = null;
+  });
+  return catalogInFlight;
+}
+
+// ── Routes ────────────────────────────────────────────────────
 
 async function testConnection() {
   try {
@@ -269,12 +416,7 @@ router.get("/test", async (_req, res) => {
 });
 
 router.get("/debug-soap", (_req, res) => {
-  const inner =
-    credBlock() +
-    "\n      <LastUpdate>1/1/1990</LastUpdate>\n      <LastItem>-1</LastItem>\n      <Source>" +
-    esc(SOURCE) +
-    "</Source>";
-  const body = buildEnvelope("DailyItemUpdate", inner);
+  const body = buildEnvelope("DailyItemUpdate", dailyItemUpdateInner(-1));
   res.json({
     ok: true,
     finalUrl: ENDPOINT,
@@ -291,6 +433,10 @@ router.get("/debug-soap", (_req, res) => {
     ],
     sourceIsBlank: SOURCE === "",
     credentialsPresent: { user: !!USER, password: !!PASS, customer: !!CUST },
+    streamingParser: true,
+    cache: catalogCache
+      ? { rows: catalogCache.rows.length, ageMs: Date.now() - catalogCache.fetchedAt }
+      : null,
     soapBody: redact(body),
   });
 });
@@ -309,6 +455,28 @@ router.get("/debug-url", (_req, res) => {
       Source: SOURCE,
     },
   });
+});
+
+/** Cache status without triggering an upstream pull. */
+router.get("/cache-status", (_req, res) => {
+  res.json({
+    ok: true,
+    warm: !!catalogCache,
+    building: !!catalogInFlight,
+    total_items: catalogCache ? catalogCache.rows.length : 0,
+    age_ms: catalogCache ? Date.now() - catalogCache.fetchedAt : null,
+    ttl_ms: CATALOG_TTL_MS,
+  });
+});
+
+/** Kick off a catalog build in the background and return immediately. */
+router.post("/warm-cache", (_req, res) => {
+  if (!catalogCache && !catalogInFlight) {
+    fetchFullCatalog(false).catch((err) =>
+      console.error("[SportsSouth Warm]", err.message)
+    );
+  }
+  res.json({ ok: true, warm: !!catalogCache, building: !!catalogInFlight });
 });
 
 router.get("/items/page", async (req, res) => {
